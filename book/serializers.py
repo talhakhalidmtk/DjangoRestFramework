@@ -1,7 +1,10 @@
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 
-from .models import Book, Publisher, Contributor, BookContributor
+from .models import Book, Publisher, Review, Contributor, BookContributor
+from .utils import average_rating
 
 
 class PublisherSerializer(serializers.ModelSerializer):
@@ -17,9 +20,12 @@ class ContributorSerializer(serializers.ModelSerializer):
 
 
 class BookContributorSerializer(serializers.ModelSerializer):
+    book = serializers.PrimaryKeyRelatedField(queryset=Book.objects.all())
+    contributor = serializers.PrimaryKeyRelatedField(queryset=Contributor.objects.all())
+
     class Meta:
         model = BookContributor
-        fields = ['contributor', 'role']
+        fields = '__all__'
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -29,29 +35,66 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class BookSerializer(serializers.ModelSerializer):
-    book_contributor = BookContributorSerializer(many=True)
+    publisher = PublisherSerializer()
     rating = serializers.SerializerMethodField('book_rating')
     reviews = serializers.SerializerMethodField('book_reviews')
 
-    def create(self, validated_data):
-        title = validated_data['title']
-        publication_date = validated_data['publication_date']
-        isbn = validated_data['isbn']
-        cover = validated_data['cover']
-        sample = validated_data['sample']
-        publisher = validated_data['publisher']
-        contributor = validated_data['book_contributor']['contributor']
-        role = validated_data['book_contributor']['role']
+    def book_rating(self, book):
+        reviews = book.review_set.all()
+        if reviews:
+            return average_rating([review.rating for review in reviews])
+        else:
+            None
 
-        book = Book.objects.create(title=title, publication_date=publication_date, isbn=isbn, cover=cover,
-                                   sample=sample, publisher=publisher)
-        book.save()
-        book.contributors.add(BookContributor(book=book, contributor=contributor, role=role))
-        book.save()
+    def book_reviews(self, book):
+        reviews = book.review_set.all()
+        if reviews:
+            return ReviewSerializer(reviews, many=True).data
+        else:
+            None
 
-        return book
+    def to_representation(self, instance):
+        # Call the parent class's to_representation() method
+        representation = super().to_representation(instance)
+
+        contributors = instance.bookcontributor_set.all()
+        representation['contributors'] = [
+            {
+                'first_name': contributor.contributor.first_names,
+                'last_name': contributor.contributor.last_names,
+                'role': contributor.role
+            } for contributor in contributors
+        ]
+
+        return representation
 
     class Meta:
         model = Book
-        fields = ('title', 'publication_date', 'isbn', 'cover', 'sample', 'publisher', 'book_contributor', 'rating',
-                  'reviews',)
+        fields = '__all__'
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    creator = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Review
+        fields = '__all__'
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        creator = request.user
+        book = validated_data['book']
+
+        return Review.objects.create(content=validated_data['content'], book=book, creator=creator,
+                                     rating=validated_data['rating'])
+
+    def update(self, instance, validated_data):
+        request = self.context['request']
+        creator = request.user
+        if instance.creator_id != creator.pk:
+            raise PermissionDenied('Permission denied, you are not the creator of this review')
+        instance.content = validated_data['content']
+        instance.rating = validated_data['rating']
+        instance.date_edited = timezone.now()
+        instance.save()
+        return instance
