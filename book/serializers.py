@@ -74,27 +74,15 @@ class BookSerializer(serializers.ModelSerializer):
 
 
 class ReviewSerializer(serializers.ModelSerializer):
-    creator = UserSerializer(read_only=True)
+    creator = serializers.HiddenField(default=serializers.CurrentUserDefault())
 
     class Meta:
         model = Review
         fields = '__all__'
 
-    def create(self, validated_data):
-        request = self.context["request"]
-        creator = request.user
-        book = validated_data['book']
-
-        return Review.objects.create(content=validated_data['content'], book=book, creator=creator,
-                                     rating=validated_data['rating'])
-
-    def update(self, instance, validated_data):
+    def perform_update(self, serializer):
         request = self.context['request']
         creator = request.user
-        if instance.creator_id != creator.pk:
+        if serializer.instance.creator_id != creator.pk:
             raise PermissionDenied('Permission denied, you are not the creator of this review')
-        instance.content = validated_data['content']
-        instance.rating = validated_data['rating']
-        instance.date_edited = timezone.now()
-        instance.save()
-        return instance
+        serializer.save(date_edited=timezone.now())
