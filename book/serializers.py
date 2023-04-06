@@ -1,7 +1,5 @@
 from django.contrib.auth.models import User
-from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 
 from .models import Book, Publisher, Review, Contributor, BookContributor
 from .utils import average_rating
@@ -79,10 +77,3 @@ class ReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Review
         fields = '__all__'
-
-    def perform_update(self, serializer):
-        request = self.context['request']
-        creator = request.user
-        if serializer.instance.creator_id != creator.pk:
-            raise PermissionDenied('Permission denied, you are not the creator of this review')
-        serializer.save(date_edited=timezone.now())

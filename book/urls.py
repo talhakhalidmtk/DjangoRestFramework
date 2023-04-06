@@ -8,11 +8,11 @@ from rest_framework_simplejwt.views import (
 from . import views
 
 router = DefaultRouter()
-router.register(r'books', views.BookViewSet)
-router.register(r'reviews', views.ReviewViewSet)
-router.register(r'publishers', views.PublisherViewSet)
-router.register(r'contributors', views.ContributorViewSet)
-router.register(r'book_contributors', views.BookContributorViewSet)
+router.register(r'books', views.BookViewSet, basename='books')
+router.register(r'reviews', views.ReviewViewSet, basename='reviews')
+router.register(r'publishers', views.PublisherViewSet, basename='publishers')
+router.register(r'contributors', views.ContributorViewSet, basename='contributors')
+router.register(r'book_contributors', views.BookContributorViewSet, basename='book_contributors')
 
 urlpatterns = [
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
